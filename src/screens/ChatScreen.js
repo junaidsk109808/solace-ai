@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 // Backend endpoint for Solace AI Gemini chat
-const BACKEND_API_URL = 'http://192.168.1.106:8000/chat';
+const BACKEND_API_URL = 'https://solace-ai-backend.onrender.com/chat';
 
 // Supabase persistence — saves actual messages only, never fake responses
 import {
