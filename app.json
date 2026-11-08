@@ -2,6 +2,7 @@
   "expo": {
     "name": "solace-ai",
     "slug": "solace-ai",
+    "scheme": "solaceai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,6 +11,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.junaid4.solaceai",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -19,6 +22,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "051a388a-4cd0-4f0e-a971-e258de74fd7b"
+      }
     }
   }
 }
