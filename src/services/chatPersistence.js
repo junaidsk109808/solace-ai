@@ -97,3 +97,37 @@ export async function saveMessage(conversationId, userId, role, content) {
         return false;
     }
 }
+
+/**
+ * Deletes ALL messages of one conversation (the conversation row itself is kept).
+ * Returns { ok: true } or { ok: false, error: '<message>' }. Never throws.
+ * RLS can silently block a delete (0 rows, no error), so we verify that nothing
+ * is left afterwards instead of trusting the absence of an error.
+ */
+export async function clearMessages(conversationId) {
+    if (!conversationId) return { ok: false, error: 'No open conversation to clear.' };
+    try {
+        const { error } = await supabase
+            .from('messages')
+            .delete()
+            .eq('conversation_id', conversationId);
+        if (error) throw error;
+
+        const { count, error: checkError } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conversationId);
+        if (checkError) throw checkError;
+
+        if (count && count > 0) {
+            return {
+                ok: false,
+                error: 'The database did not allow these messages to be deleted (check the delete policy on messages).',
+            };
+        }
+        return { ok: true };
+    } catch (error) {
+        console.warn('clearMessages failed:', error?.message || error);
+        return { ok: false, error: error?.message || 'Unknown error.' };
+    }
+}

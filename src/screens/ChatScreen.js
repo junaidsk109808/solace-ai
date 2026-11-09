@@ -12,6 +12,7 @@ import {
     StatusBar,
     Animated,
     Easing,
+    Alert,
 } from 'react-native';
 
 // Backend endpoint for Solace AI Gemini chat
@@ -23,6 +24,7 @@ import {
     loadLatestConversation,
     loadMessages,
     saveMessage,
+    clearMessages,
 } from '../services/chatPersistence';
 
 const COLORS = {
@@ -329,6 +331,14 @@ function TypingIndicator() {
 
 const WELCOME_ID = '1';
 
+function showMessage(title, message) {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(`${title}\n${message}`);
+    } else {
+        Alert.alert(title, message);
+    }
+}
+
 export default function ChatScreen({ onBack, user }) {
     const firstName =
         user?.user_metadata?.full_name?.split(' ')[0] ||
@@ -351,13 +361,13 @@ export default function ChatScreen({ onBack, user }) {
         );
         setInputHeight(newHeight);
     };
-    const [messages, setMessages] = useState([
-        {
-            id: WELCOME_ID,
-            text: `Hey${firstName ? ` ${firstName}` : ''}! I'm Solace, your personal wellness companion. 💜\n\nI'm here to listen without judgment, support you, and help you find peace.\n\nHow are you feeling right now?`,
-            sender: 'ai',
-        },
-    ]);
+    const welcomeMessage = {
+        id: WELCOME_ID,
+        text: `Hey${firstName ? ` ${firstName}` : ''}! I'm Solace, your personal wellness companion. 💜\n\nI'm here to listen without judgment, support you, and help you find peace.\n\nHow are you feeling right now?`,
+        sender: 'ai',
+    };
+    const [messages, setMessages] = useState([welcomeMessage]);
+    const [isClearing, setIsClearing] = useState(false);
 
     const flatListRef = useRef(null);
     // Always-current conversation id + the in-flight init promise, so a message
@@ -426,10 +436,51 @@ export default function ChatScreen({ onBack, user }) {
         }
     };
 
+    // Delete every saved message of the open conversation (the conversation row stays).
+    const performClearChat = async () => {
+        if (isClearing) return;
+        setIsClearing(true);
+        try {
+            // Signed-in users: delete from Supabase first, so the UI never claims
+            // a clear that did not happen.
+            if (user?.id) {
+                const id = conversationIdRef.current || (await initPromiseRef.current);
+                if (!id) {
+                    showMessage(
+                        'Could not clear chat',
+                        'Your conversation could not be found. Please check your connection and try again.'
+                    );
+                    return;
+                }
+                const result = await clearMessages(id);
+                if (!result.ok) {
+                    showMessage('Could not clear chat', result.error);
+                    return;
+                }
+            }
+            setMessages([welcomeMessage]);
+        } finally {
+            setIsClearing(false);
+        }
+    };
+
+    const handleClearChat = () => {
+        if (isTyping || isClearing) return;
+        const question = 'Are you sure you want to clear this conversation?';
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            if (window.confirm(question)) performClearChat();
+            return;
+        }
+        Alert.alert('Clear Chat', question, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Clear Chat', style: 'destructive', onPress: performClearChat },
+        ]);
+    };
+
     const handleSendMessage = async (textToSend, isRetry = false) => {
         const trimmed = (textToSend || input).trim();
         // Prevent sending empty message or sending while request is already pending
-        if (!trimmed || isTyping) return;
+        if (!trimmed || isTyping || isClearing) return;
 
         const userMsg = {
             id: Date.now().toString(),
@@ -452,7 +503,7 @@ export default function ChatScreen({ onBack, user }) {
         try {
             // Setup timeout with AbortController
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
 
             const response = await fetch(BACKEND_API_URL, {
                 method: 'POST',
@@ -613,7 +664,14 @@ export default function ChatScreen({ onBack, user }) {
                         </View>
                     </View>
 
-                    <View style={styles.headerSpace} />
+                    <TouchableOpacity
+                        onPress={handleClearChat}
+                        disabled={isTyping || isClearing}
+                        activeOpacity={0.7}
+                        style={[styles.clearButton, (isTyping || isClearing) && styles.clearButtonDisabled]}
+                    >
+                        <Text style={styles.clearButtonText}>{isClearing ? 'Clearing…' : 'Clear'}</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Chat introduction */}
@@ -666,7 +724,7 @@ export default function ChatScreen({ onBack, user }) {
                             onChangeText={setInput}
                             multiline
                             maxLength={2000}
-                            editable={!isTyping}
+                            editable={!isTyping && !isClearing}
                             onContentSizeChange={handleContentSizeChange}
                             scrollEnabled={inputHeight >= MAX_INPUT_HEIGHT}
                         />
@@ -674,10 +732,10 @@ export default function ChatScreen({ onBack, user }) {
                         <TouchableOpacity
                             style={[
                                 styles.sendButton,
-                                (!input.trim() || isTyping) && styles.sendButtonDisabled,
+                                (!input.trim() || isTyping || isClearing) && styles.sendButtonDisabled,
                             ]}
                             onPress={() => handleSendMessage()}
-                            disabled={!input.trim() || isTyping}
+                            disabled={!input.trim() || isTyping || isClearing}
                         >
                             <Text style={styles.sendIcon}>↑</Text>
                         </TouchableOpacity>
@@ -764,6 +822,24 @@ const styles = StyleSheet.create({
     },
     headerSpace: {
         width: 42,
+    },
+    clearButton: {
+        height: 36,
+        paddingHorizontal: 14,
+        borderRadius: 14,
+        backgroundColor: COLORS.background,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    clearButtonDisabled: {
+        opacity: 0.4,
+    },
+    clearButtonText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.primaryDark,
     },
     dateContainer: {
         alignItems: 'center',
